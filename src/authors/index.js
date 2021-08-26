@@ -8,12 +8,17 @@ import path, { dirname } from 'path';
 
 import { fileURLToPath } from 'url';
 
+import createError from 'http-errors';
+
 import { parseFile } from '../utils/upload/index.js';
 
 import AuthorsModel from './schema.js';
 
 import { generateCSV } from '../utils/csv/index.js';
-import { basicAuthMiddleware } from '../auth/basic.js';
+
+import { basicAuthMiddleware, JWTAuthMiddleware } from '../auth/basic.js';
+
+import { JWTAuthenticate } from '../auth/tools.js';
 
 const __filename = fileURLToPath(import.meta.url);
 
@@ -24,11 +29,12 @@ const authorsFilePath = path.join(__dirname, 'authors.json');
 const router = express.Router();
 
 // get all authors
-router.get('/', basicAuthMiddleware, async (req, res, next) => {
+router.get('/', JWTAuthMiddleware, async (req, res, next) => {
+  //JWTmiddlewere
   try {
-    const authors = await AuthorsModel.find();
-    console.log('co to kurwa jest ', authors);
-    res.send(authors);
+    const users = await AuthorsModel.find();
+    console.log(users);
+    res.send(users);
   } catch (error) {
     res.sendStatus(500);
   }
@@ -61,30 +67,6 @@ router.delete('/me', basicAuthMiddleware, async (req, res, next) => {
     next(error);
   }
 });
-
-// // get all authors export as csv
-// router.get("/csv", async (req, res, next) => {
-//   try {
-//     const fileAsBuffer = fs.readFileSync(authorsFilePath);
-//     const fileAsString = fileAsBuffer.toString();
-//     const fileAsJSON = JSON.parse(fileAsString);
-//     if (fileAsJSON.length > 0) {
-//       const [first, ...rest] = fileAsJSON;
-//       const fields = Object.keys(first);
-//       const csvBuffer = generateCSV(fields, fileAsJSON);
-//       res.setHeader("Content-Type", "text/csv");
-//       res.setHeader(
-//         "Content-Disposition",
-//         'attachment; filename="authors.csv"'
-//       );
-//       res.send(csvBuffer);
-//     } else {
-//       res.status(404).send({ message: "there is no one here." });
-//     }
-//   } catch (error) {
-//     res.send(500).send({ message: error.message });
-//   }
-// });
 
 // create  author
 router.post('/', basicAuthMiddleware, async (req, res, next) => {
@@ -152,39 +134,22 @@ router.put('/:id', async (req, res, next) => {
   }
 });
 
-// router.put(
-//   "/:id/avatar",
-//   parseFile.single("avatar"),
-//   async (req, res, next) => {
-//     try {
-//       const fileAsBuffer = fs.readFileSync(authorsFilePath);
+router.post('/login', async (req, res, next) => {
+  try {
+    const { email, password } = req.body;
 
-//       const fileAsString = fileAsBuffer.toString();
+    const user = await AuthorsModel.checkCredentials(email, password);
 
-//       let fileAsJSONArray = JSON.parse(fileAsString);
+    if (user) {
+      const accessToken = await JWTAuthenticate(user);
 
-//       const authorIndex = fileAsJSONArray.findIndex(
-//         (author) => author.id === req.params.id
-//       );
-//       if (!authorIndex == -1) {
-//         res
-//           .status(404)
-//           .send({ message: `Author with ${req.params.id} is not found!` });
-//       }
-//       const previousAuthorData = fileAsJSONArray[authorIndex];
-//       const changedAuthor = {
-//         ...previousAuthorData,
-//         avatar: req.file.path,
-//         updatedAt: new Date(),
-//         id: req.params.id,
-//       };
-//       fileAsJSONArray[authorIndex] = changedAuthor;
-//       fs.writeFileSync(authorsFilePath, JSON.stringify(fileAsJSONArray));
-//       res.send(changedAuthor);
-//     } catch (error) {
-//       res.send(500).send({ message: error.message });
-//     }
-//   }
-// );
+      res.send({ accessToken });
+    } else {
+      next(createError(401, 'Credentials not valid!'));
+    }
+  } catch (error) {
+    next(error);
+  }
+});
 
 export default router;
